@@ -1,6 +1,6 @@
 from threading import Thread, Condition, Event
 from queue import Queue
-from datetime import datetime
+import time
 
 from pyrsistent import PRecord, field, PVector, m, v
 
@@ -11,22 +11,25 @@ class Product(PRecord):
 
 
 class Transaction(PRecord):
-    timestamp = field(type=datetime)
+    timestamp = field()
     products = field(type=PVector)
 
 
 class Summary(PRecord):
-    timestamp = field(type=datetime)
+    timestamp = field()
     money_spent = field()
 
 
 class Database:
-    def __init__(self):
+    def __init__(self, timefunc=time.time):
         self.__data = m(products=m(), transactions=v(), summaries=v())
+
         self.__event_queue = Queue()    # sequential query execution
         self.__lock = Condition()       # passive waiting only
-
         self.__stop = Event()
+
+        self.time = timefunc
+
         Thread(target=self.__run).start()
 
     def snapshot(self):
@@ -90,8 +93,9 @@ class FunctionsTestingDatabase:
     """
     Database without queue, where all queries are executed right away.
     """
-    def __init__(self):
+    def __init__(self, timefunc=time.time):
         self.__data = m(products=m(), transactions=v(), summaries=v())
+        self.time = timefunc
 
     def snapshot(self):
         return self.__data

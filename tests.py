@@ -1,5 +1,7 @@
 import unittest
 import random
+from time import sleep
+from datetime import timedelta
 
 from pyrsistent import m
 
@@ -69,7 +71,8 @@ class TestProductFunctions(unittest.TestCase):
 
 class TestCalculationFunctions(unittest.TestCase):
     def setUp(self):
-        self.db = FunctionsTestingDatabase()
+        self.time = 0
+        self.db = FunctionsTestingDatabase(timefunc=lambda: self.time)
         self.products = {}
         for i in range(10):
             self.products[i] = Product(name='item' + str(i), price=i * 100)
@@ -99,7 +102,10 @@ class TestCalculationFunctions(unittest.TestCase):
 
     def test_create_summary_one_transaction(self):
         buy(self.db, [0, 1, 3])
+
+        self.time += timedelta(days=1).total_seconds()
         create_summary(self.db)
+
         sleep(0.5)
         self.assertEqual(self.db.snapshot().summaries[0].money_spent, 400)
 
@@ -107,14 +113,18 @@ class TestCalculationFunctions(unittest.TestCase):
         buy(self.db, [0, 9, 9])
         buy(self.db, [1, 1, 0, 4])
         buy(self.db, [2])
+
+        self.time += timedelta(days=1).total_seconds()
         create_summary(self.db)
+
         sleep(1)
         self.assertEqual(self.db.snapshot().summaries[0].money_spent, 2600)
 
 
 class TestSeparateThreadDatabase(unittest.TestCase):
     def setUp(self):
-        self.db = Database()
+        self.time = 0
+        self.db = Database(timefunc=lambda: self.time)
         for i in range(10):
             create_product(self.db, i, 'item' + str(i), i * 100)
         sleep(0.1)
@@ -123,17 +133,23 @@ class TestSeparateThreadDatabase(unittest.TestCase):
         buy(self.db, [0, 7, 8])
         buy(self.db, [1, 4])
         sleep(0.1)
+
+        self.time += timedelta(days=1).total_seconds()
         create_summary(self.db)
+
         buy(self.db, [2, 4])
         buy(self.db, [1, 3])
         sleep(0.1)
+
+        self.time += timedelta(days=1).total_seconds()
         create_summary(self.db)
+
         buy(self.db, [9, 8, 7])
 
         sleep(2)                # summaries calculation
         sums = self.db.snapshot().summaries
         self.assertEqual(sums[0].money_spent, 2000)
-        self.assertEqual(sums[1].money_spent, 3000)
+        self.assertEqual(sums[1].money_spent, 1000)
 
     def tearDown(self):
         self.db.stop()

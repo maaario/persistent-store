@@ -1,5 +1,5 @@
-from datetime import datetime, date, time
-from time import sleep
+import time
+from datetime import date, timedelta
 from threading import Thread
 
 from pyrsistent import freeze
@@ -58,7 +58,7 @@ def buy(db, ids):
         for id in ids:
             if id in data.products:
                 products.append(data.products[id])
-        trans = Transaction(timestamp=datetime.now(), products=freeze(products))
+        trans = Transaction(timestamp=db.time(), products=freeze(products))
         transactions = data.transactions.append(trans)
         return data.set("transactions", transactions)
 
@@ -67,22 +67,20 @@ def buy(db, ids):
 
 def create_summary(db):
     """
-    Sums up, how much money the customers spent in the given day.
+    Sums up, how much money the customers spent in the previous day.
     This is computed asynchronously, (in the separate thread) and then atomically written into the DB.
     To simulate that summary takes a long time, function sleeps 0.1s after processing each buy record.
     """
-    data = db.snapshot()
-    start_time = datetime.now()
+    def previous_day(today_time, other_time):
+        return date.fromtimestamp(today_time) - timedelta(days=1) == date.fromtimestamp(other_time)
 
     def separate_thread():
-        today_min = datetime.combine(date.today(), time.min)
-        today_max = datetime.combine(date.today(), time.max)
-        transactions = filter(lambda t: today_min <= t.timestamp <= today_max, data.transactions)
+        transactions = filter(lambda t: previous_day(start_time, t.timestamp), data.transactions)
 
         money_spent = 0
         for t in transactions:
             money_spent += sum(map(lambda p: p.price, t.products))
-            sleep(0.1)
+            time.sleep(0.1)
 
         summary = Summary(timestamp=start_time, money_spent=money_spent)
 
@@ -92,4 +90,6 @@ def create_summary(db):
 
         db.query(fn)
 
+    data = db.snapshot()
+    start_time = db.time()
     Thread(target=separate_thread).start()
