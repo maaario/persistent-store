@@ -1,12 +1,13 @@
 import unittest
 import random
 from time import sleep
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from pyrsistent import m
+from pyrsistent import m, v, freeze
 
-from db_functions import *
-from db_core import Database, FunctionsTestingDatabase
+from db_functions import create_product, modify_product, delete_product, buy, create_summary
+from db_core import Database, FunctionsTestingDatabase, Product, Transaction, Summary
+from summary_scheduler import SummaryScheduler
 
 
 class TestProductFunctions(unittest.TestCase):
@@ -123,7 +124,7 @@ class TestCalculationFunctions(unittest.TestCase):
 
 class TestSeparateThreadDatabase(unittest.TestCase):
     def setUp(self):
-        self.time = 0
+        self.time = datetime(year=1970, month=1, day=1).timestamp()
         self.db = Database(timefunc=lambda: self.time)
         for i in range(10):
             create_product(self.db, i, 'item' + str(i), i * 100)
@@ -209,6 +210,72 @@ class TestDatabaseAgainstFunctionTestingDatabase(unittest.TestCase):
 
     def tearDown(self):
         self.db1.stop()
+
+
+class TestSummaryScheduler(unittest.TestCase):
+    def setUp(self):
+        self.time = datetime(year=1970, month=1, day=1).timestamp()
+        self.db = Database(timefunc=lambda: self.time)
+        self.scheduler = None
+        for i in range(10):
+            create_product(self.db, i, 'item' + str(i), i * 100)
+
+    def change_time(self, days=0, hours=0, minutes=0):
+        self.time += timedelta(days=days, hours=hours, minutes=minutes).total_seconds()
+        self.scheduler.wake_up()
+
+    def test_one_day(self):
+        summary_time = datetime(year=1970, month=1, day=2).timestamp()
+        self.scheduler = SummaryScheduler(self.db, first_summary_time=summary_time)
+
+        buy(self.db, [0, 1, 2])
+        buy(self.db, [0, 3, 4])
+        self.change_time(hours=23, minutes=59)
+
+        sleep(1)
+        self.assertEqual(self.db.snapshot().summaries, v())
+
+        self.change_time(minutes=1)
+        sleep(1)
+        self.assertEqual(self.db.snapshot().summaries[0], Summary(timestamp=summary_time, money_spent=1000))
+
+    def test_more_days(self):
+        next_summary_time = datetime(year=1970, month=1, day=2, hour=17, minute=45).timestamp()
+        day = timedelta(days=1).total_seconds()
+        self.scheduler = SummaryScheduler(self.db, first_summary_time=next_summary_time)
+
+        def simulate_one_day(buy_lists):
+            nonlocal next_summary_time
+
+            # buy items
+            for items in buy_lists:
+                buy(self.db, items)
+
+            # transactions written into database
+            sleep(0.1)
+
+            # move to next day and wait for summary creation
+            self.change_time(days=1)
+            sleep(0.1 * sum(map(len, buy_lists)) + 0.2)
+
+            # assert
+            expected_summary = Summary(timestamp=next_summary_time,
+                                       money_spent=100 * sum(map(sum, buy_lists)))
+            self.assertEqual(self.db.snapshot().summaries[-1], expected_summary)
+
+            # change date of next expected summary
+            next_summary_time += day
+
+        self.change_time(hours=17, minutes=45)
+        simulate_one_day([[5]])
+        simulate_one_day([[5, 1], [8, 6]])
+        simulate_one_day([[]])
+        simulate_one_day([])
+        simulate_one_day([[1, 2], [0, 3]])
+
+    def tearDown(self):
+        self.scheduler.stop()
+        self.db.stop()
 
 if __name__ == '__main__':
     unittest.main()
