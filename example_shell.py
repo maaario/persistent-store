@@ -1,14 +1,17 @@
 import code
 from datetime import datetime, timedelta
+import logging.config
 
-from db_core import VerboseDatabase
+from db_core import Database
 from summary_scheduler import SummaryScheduler
 from db_functions import create_product, modify_product, delete_product, buy, create_summary
 
+logging.config.fileConfig("logging-devel.conf")
+
 current_time = datetime(year=1970, month=1, day=1).timestamp()
 
-db = VerboseDatabase(timefunc=lambda: current_time)
-scheduler = SummaryScheduler(db, first_summary_time=current_time + timedelta(days=1))
+db = Database(timefunc=lambda: current_time)
+scheduler = SummaryScheduler(db, first_summary_time=current_time + timedelta(days=1).total_seconds())
 
 
 def next_day():

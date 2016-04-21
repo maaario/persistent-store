@@ -1,5 +1,6 @@
 import unittest
 import random
+import logging
 from time import sleep
 from datetime import datetime, timedelta
 
@@ -8,6 +9,8 @@ from pyrsistent import m, v, freeze
 from db_functions import create_product, modify_product, delete_product, buy, create_summary
 from db_core import Database, FunctionsTestingDatabase, Product, Transaction, Summary
 from summary_scheduler import SummaryScheduler
+
+logging.disable(logging.CRITICAL)
 
 
 class TestProductFunctions(unittest.TestCase):

@@ -1,8 +1,11 @@
+import logging
 from threading import Thread, Condition, Event
 from queue import Queue
 import time
 
 from pyrsistent import PRecord, field, PVector, m, v
+
+logger = logging.getLogger("queue")
 
 
 class Product(PRecord):
@@ -50,7 +53,13 @@ class Database:
 
     def __process_query(self):
         fn = self.__event_queue.get()
+        logger.info("removing from queue and processing function {}".format(fn))
         self.__data = fn()
+
+        data = self.snapshot()
+        logger.debug("DB products    : {}".format(data.products))
+        logger.debug("DB transactions: {}".format(data.transactions))
+        logger.debug("DB summaries   : {}".format(data.summaries))
 
     def __run(self):
         """
@@ -69,24 +78,6 @@ class Database:
         with self.__lock:
             self.__stop.set()
             self.__lock.notify()
-
-
-class VerboseDatabase(Database):
-    """
-    Database suited for manual testing.
-    State of database is reported after every query.
-    """
-    def _Database__process_query(self):
-        fn = self._Database__event_queue.get()
-        self._Database__data = fn()
-
-        data = self.snapshot()
-
-        print("function:", fn)
-        print(data.products)
-        print(data.transactions)
-        print(data.summaries)
-        print('-'*50)
 
 
 class FunctionsTestingDatabase:
